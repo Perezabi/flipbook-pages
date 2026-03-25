@@ -2,29 +2,49 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Perez | Magazine Flipbook</title>
+<title>Perez | Flipbook</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+<!-- Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
 <style>
+:root {
+    --bg: rgba(255,255,255,0.1);
+    --text: #fff;
+}
+
+body.light {
+    --bg: rgba(255,255,255,0.7);
+    --text: #000;
+    background: #f2f2f2;
+}
+
 body {
     margin: 0;
-    background: #0b0b0b;
     font-family: -apple-system, sans-serif;
-    color: white;
+    background: #0b0b0b;
+    color: var(--text);
+}
+
+/* Glass UI */
+.glass {
+    backdrop-filter: blur(15px);
+    background: var(--bg);
+    border-radius: 15px;
 }
 
 /* Header */
 .header {
-    text-align: center;
     padding: 10px;
+    margin: 10px;
+    text-align: center;
 }
 
 /* Upload */
 .upload {
-    display: block;
-    margin: 10px auto;
+    margin: 10px;
 }
 
 /* Book */
@@ -35,14 +55,7 @@ body {
     margin: auto;
 }
 
-/* Page */
-.page {
-    background: white;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
+/* Pages */
 .page img {
     width: 100%;
     height: 100%;
@@ -54,121 +67,147 @@ body {
     display: flex;
     overflow-x: auto;
     padding: 10px;
-    background: rgba(0,0,0,0.8);
 }
 
 .thumb {
     width: 70px;
     height: 90px;
     margin-right: 10px;
-    border: 2px solid transparent;
-    border-radius: 6px;
+    border-radius: 8px;
     overflow: hidden;
-}
-
-.thumb img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    border: 2px solid transparent;
 }
 
 .thumb.active {
     border: 2px solid #00ffcc;
+}
+
+/* Drag area */
+.drop {
+    border: 2px dashed #aaa;
+    padding: 15px;
+    margin: 10px;
+    border-radius: 10px;
 }
 </style>
 </head>
 
 <body>
 
-<div class="header">
-    <h2>📖 My Magazine</h2>
+<div class="header glass">
+    <h3>📖 Perez Flipbook</h3>
+
+    <div class="drop" id="drop">Drop Images / PDF Here</div>
+
     <input type="file" id="upload" class="upload" multiple>
+
+    <button onclick="toggleMode()">🌙 Toggle Mode</button>
 </div>
 
 <div id="book"></div>
-
 <div class="thumbs" id="thumbs"></div>
-
-<audio id="flipSound" src="https://www.soundjay.com/page-turn/page-flip-01.mp3"></audio>
 
 <script>
 let pageFlip;
-let images = [];
+let pages = [];
 
-const flipSound = document.getElementById("flipSound");
-
-/* Upload */
-document.getElementById("upload").addEventListener("change", e => {
-    const files = e.target.files;
-    const book = document.getElementById("book");
-    const thumbs = document.getElementById("thumbs");
-
-    book.innerHTML = "";
-    thumbs.innerHTML = "";
-    images = [];
-
-    let pagesHTML = "";
-
-    Array.from(files).forEach((file, i) => {
-        const url = URL.createObjectURL(file);
-        images.push(url);
-
-        pagesHTML += `
-            <div class="page">
-                <img src="${url}">
-            </div>
-        `;
-
-        // thumbnails
-        const thumb = document.createElement("div");
-        thumb.className = "thumb";
-        thumb.innerHTML = `<img src="${url}">`;
-
-        thumb.onclick = () => {
-            pageFlip.flip(i);
-        };
-
-        thumbs.appendChild(thumb);
-    });
-
-    book.innerHTML = pagesHTML;
-
-    pageFlip = new St.PageFlip(book, {
+/* Init flipbook */
+function initBook() {
+    pageFlip = new St.PageFlip(document.getElementById("book"), {
         width: 450,
         height: 600,
-        size: "stretch",
         showCover: true,
-        mobileScrollSupport: false,
-        useMouseEvents: true,
         maxShadowOpacity: 0.5
     });
 
     pageFlip.loadFromHTML(document.querySelectorAll(".page"));
 
-    /* Events */
-    pageFlip.on("flip", e => {
-        flipSound.currentTime = 0;
-        flipSound.play();
-        updateActive(e.data);
+    pageFlip.on("flip", e => updateThumb(e.data));
+}
+
+/* Add pages */
+function renderPages(images) {
+    const book = document.getElementById("book");
+    const thumbs = document.getElementById("thumbs");
+
+    book.innerHTML = "";
+    thumbs.innerHTML = "";
+
+    images.forEach((src, i) => {
+        const page = document.createElement("div");
+        page.className = "page";
+        page.innerHTML = `<img src="${src}">`;
+
+        book.appendChild(page);
+
+        const thumb = document.createElement("div");
+        thumb.className = "thumb";
+        thumb.innerHTML = `<img src="${src}">`;
+
+        thumb.onclick = () => pageFlip.flip(i);
+
+        thumbs.appendChild(thumb);
     });
 
-    updateActive(0);
+    initBook();
+}
+
+/* Upload images */
+document.getElementById("upload").addEventListener("change", e => {
+    handleFiles(e.target.files);
 });
 
-/* Highlight active thumb */
-function updateActive(index) {
-    document.querySelectorAll(".thumb").forEach((t, i) => {
+/* Drag & Drop */
+const drop = document.getElementById("drop");
+
+drop.ondragover = e => e.preventDefault();
+
+drop.ondrop = e => {
+    e.preventDefault();
+    handleFiles(e.dataTransfer.files);
+};
+
+/* Handle files */
+async function handleFiles(files) {
+    let images = [];
+
+    for (let file of files) {
+        if (file.type === "application/pdf") {
+            const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
+
+            for (let i = 1; i <= pdf.numPages; i++) {
+                const page = await pdf.getPage(i);
+                const viewport = page.getViewport({ scale: 1.5 });
+
+                const canvas = document.createElement("canvas");
+                const ctx = canvas.getContext("2d");
+
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                await page.render({ canvasContext: ctx, viewport }).promise;
+
+                images.push(canvas.toDataURL());
+            }
+        } else {
+            images.push(URL.createObjectURL(file));
+        }
+    }
+
+    renderPages(images);
+}
+
+/* Thumbs highlight */
+function updateThumb(index) {
+    document.querySelectorAll(".thumb").forEach((t,i)=>{
         t.classList.toggle("active", i === index);
     });
 }
 
-/* Keyboard navigation */
-document.addEventListener("keydown", e => {
-    if (!pageFlip) return;
-
-    if (e.key === "ArrowRight") pageFlip.flipNext();
-    if (e.key === "ArrowLeft") pageFlip.flipPrev();
-});
+/* Dark/Light */
+function toggleMode() {
+    document.body.classList.toggle("light");
+}
 </script>
 
 </body>
