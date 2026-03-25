@@ -2,37 +2,55 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Flip Book</title>
+<title>Pro Flip Book | Perez</title>
 
-<!-- Bootstrap -->
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 
 <style>
 body {
-    background: #111;
+    background: linear-gradient(135deg, #1a1a1a, #000);
     color: white;
     text-align: center;
+    overflow-x: hidden;
 }
 
 /* Book container */
 .book {
-    width: 300px;
+    width: 600px;
     height: 400px;
     margin: 30px auto;
-    perspective: 1000px;
+    perspective: 2000px;
     position: relative;
 }
 
 /* Page */
 .page {
-    width: 100%;
+    width: 50%;
     height: 100%;
     position: absolute;
-    transform-origin: left;
-    transition: transform 1s;
+    top: 0;
     background: white;
-    border: 1px solid #ccc;
     overflow: hidden;
+    transform-origin: left;
+    transition: transform 1s ease, box-shadow 1s;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+}
+
+/* Left & Right pages */
+.left {
+    left: 0;
+    border-right: 1px solid #ccc;
+}
+
+.right {
+    right: 0;
+    transform-origin: left;
+}
+
+/* Flip animation */
+.page.flipped {
+    transform: rotateY(-180deg);
+    box-shadow: -5px 5px 20px rgba(0,0,0,0.8);
 }
 
 .page img {
@@ -41,46 +59,65 @@ body {
     object-fit: cover;
 }
 
-/* Flip effect */
-.page.flipped {
-    transform: rotateY(-180deg);
+/* Book shadow */
+.book::before {
+    content: "";
+    position: absolute;
+    width: 100%;
+    height: 20px;
+    bottom: -20px;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.5), transparent);
 }
 </style>
 </head>
 
 <body>
 
-<h2 class="mt-3">📖 Flip Book</h2>
+<h2 class="mt-3">📖 Pro Flip Book</h2>
 
 <div class="container">
     <input type="file" id="upload" multiple class="form-control mb-3">
-    
+
     <div class="book" id="book"></div>
 
     <div class="mt-3">
         <button class="btn btn-primary" onclick="prevPage()">⬅ Prev</button>
         <button class="btn btn-success" onclick="nextPage()">Next ➡</button>
+        <button class="btn btn-warning" onclick="downloadPDF()">⬇ Save PDF</button>
     </div>
 </div>
+
+<!-- Flip sound -->
+<audio id="flipSound" src="https://www.soundjay.com/page-turn/page-flip-01.mp3"></audio>
+
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script>
 let pages = [];
 let currentPage = 0;
+let imagesData = [];
+
+const flipSound = document.getElementById("flipSound");
 
 // Upload images
 document.getElementById("upload").addEventListener("change", function(e) {
     const files = e.target.files;
     const book = document.getElementById("book");
+
     book.innerHTML = "";
     pages = [];
+    imagesData = [];
     currentPage = 0;
 
     Array.from(files).forEach((file, index) => {
         const reader = new FileReader();
 
         reader.onload = function(event) {
+            imagesData.push(event.target.result);
+
             const page = document.createElement("div");
-            page.className = "page";
+            page.className = "page " + (index % 2 === 0 ? "left" : "right");
             page.style.zIndex = files.length - index;
 
             const img = document.createElement("img");
@@ -95,20 +132,57 @@ document.getElementById("upload").addEventListener("change", function(e) {
     });
 });
 
-// Next page
+// Next
 function nextPage() {
     if (currentPage < pages.length) {
         pages[currentPage].classList.add("flipped");
+        flipSound.play();
         currentPage++;
     }
 }
 
-// Previous page
+// Prev
 function prevPage() {
     if (currentPage > 0) {
         currentPage--;
         pages[currentPage].classList.remove("flipped");
+        flipSound.play();
     }
+}
+
+/* =========================
+   TOUCH SWIPE (Mobile)
+========================= */
+let startX = 0;
+
+document.addEventListener("touchstart", e => {
+    startX = e.touches[0].clientX;
+});
+
+document.addEventListener("touchend", e => {
+    let endX = e.changedTouches[0].clientX;
+
+    if (startX - endX > 50) {
+        nextPage(); // swipe left
+    } else if (endX - startX > 50) {
+        prevPage(); // swipe right
+    }
+});
+
+/* =========================
+   DOWNLOAD PDF
+========================= */
+async function downloadPDF() {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF();
+
+    for (let i = 0; i < imagesData.length; i++) {
+        if (i !== 0) pdf.addPage();
+
+        pdf.addImage(imagesData[i], 'JPEG', 10, 10, 180, 250);
+    }
+
+    pdf.save("flipbook.pdf");
 }
 </script>
 
