@@ -10,41 +10,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 
 <style>
-:root {
-    --bg: rgba(255,255,255,0.1);
-    --text: #fff;
-}
-
-body.light {
-    --bg: rgba(255,255,255,0.7);
-    --text: #000;
-    background: #f2f2f2;
-}
-
 body {
     margin: 0;
+    background: #0a0a0a;
     font-family: -apple-system, sans-serif;
-    background: #0b0b0b;
-    color: var(--text);
-}
-
-/* Glass UI */
-.glass {
-    backdrop-filter: blur(15px);
-    background: var(--bg);
-    border-radius: 15px;
-}
-
-/* Header */
-.header {
-    padding: 10px;
-    margin: 10px;
-    text-align: center;
-}
-
-/* Upload */
-.upload {
-    margin: 10px;
+    overflow: hidden;
 }
 
 /* Book */
@@ -53,161 +23,206 @@ body {
     max-width: 900px;
     height: 600px;
     margin: auto;
+    transition: transform 0.2s ease;
 }
 
-/* Pages */
+/* Page */
+.page {
+    background: #fdfcf7;
+    overflow: hidden; /* FIX reflection issue */
+}
+
+/* Paper texture */
+.page::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: url("https://www.transparenttextures.com/patterns/paper-1.png");
+    opacity: 0.15;
+    pointer-events: none;
+}
+
+/* Remove unwanted shadow/reflection */
+.page::after {
+    display: none;
+}
+
+/* Image */
 .page img {
     width: 100%;
     height: 100%;
     object-fit: cover;
 }
 
-/* Thumbnails */
-.thumbs {
-    display: flex;
-    overflow-x: auto;
-    padding: 10px;
+/* Cover */
+.cover {
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.5);
 }
 
-.thumb {
-    width: 70px;
-    height: 90px;
-    margin-right: 10px;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 2px solid transparent;
+/* Page number */
+.pageNumber {
+    position: fixed;
+    bottom: 15px;
+    right: 20px;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 12px;
+    border-radius: 12px;
+    color: white;
+    font-size: 14px;
 }
 
-.thumb.active {
-    border: 2px solid #00ffcc;
-}
-
-/* Drag area */
-.drop {
-    border: 2px dashed #aaa;
-    padding: 15px;
-    margin: 10px;
-    border-radius: 10px;
+/* Book depth */
+#book {
+    box-shadow:
+        0 4px 10px rgba(0,0,0,0.4),
+        0 10px 30px rgba(0,0,0,0.3);
 }
 </style>
 </head>
 
 <body>
 
-<div class="header glass">
-    <h3>📖 Perez Flipbook</h3>
-
-    <div class="drop" id="drop">Drop Images / PDF Here</div>
-
-    <input type="file" id="upload" class="upload" multiple>
-
-    <button onclick="toggleMode()">🌙 Toggle Mode</button>
-</div>
-
 <div id="book"></div>
-<div class="thumbs" id="thumbs"></div>
+<div class="pageNumber" id="pageNumber">1 / 1</div>
+
+<audio id="flipSound" src="https://www.soundjay.com/page-turn/page-flip-01.mp3"></audio>
 
 <script>
 let pageFlip;
-let pages = [];
+let totalPages = 0;
 
-/* Init flipbook */
+/* Init Flipbook */
 function initBook() {
     pageFlip = new St.PageFlip(document.getElementById("book"), {
         width: 450,
         height: 600,
         showCover: true,
-        maxShadowOpacity: 0.5
+        maxShadowOpacity: 0.25,
+        flippingTime: 500,
+        useMouseEvents: true,
+        mobileScrollSupport: false,
+        swipeDistance: 20
     });
 
     pageFlip.loadFromHTML(document.querySelectorAll(".page"));
 
-    pageFlip.on("flip", e => updateThumb(e.data));
+    pageFlip.on("flip", e => {
+        updatePageNumber(e.data);
+        playSound();
+    });
 }
 
-/* Add pages */
+/* Render Pages */
 function renderPages(images) {
     const book = document.getElementById("book");
-    const thumbs = document.getElementById("thumbs");
-
     book.innerHTML = "";
-    thumbs.innerHTML = "";
 
     images.forEach((src, i) => {
         const page = document.createElement("div");
         page.className = "page";
+
+        if (i === 0) page.classList.add("cover");
+
         page.innerHTML = `<img src="${src}">`;
-
         book.appendChild(page);
-
-        const thumb = document.createElement("div");
-        thumb.className = "thumb";
-        thumb.innerHTML = `<img src="${src}">`;
-
-        thumb.onclick = () => pageFlip.flip(i);
-
-        thumbs.appendChild(thumb);
     });
 
+    totalPages = images.length;
     initBook();
+    updatePageNumber(0);
 }
 
-/* Upload images */
-document.getElementById("upload").addEventListener("change", e => {
-    handleFiles(e.target.files);
-});
-
-/* Drag & Drop */
-const drop = document.getElementById("drop");
-
-drop.ondragover = e => e.preventDefault();
-
-drop.ondrop = e => {
-    e.preventDefault();
-    handleFiles(e.dataTransfer.files);
-};
-
-/* Handle files */
-async function handleFiles(files) {
+/* Load PDF */
+async function loadPDF() {
+    const pdf = await pdfjsLib.getDocument("book.pdf").promise;
     let images = [];
 
-    for (let file of files) {
-        if (file.type === "application/pdf") {
-            const pdf = await pdfjsLib.getDocument(URL.createObjectURL(file)).promise;
+    for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1.5 });
 
-            for (let i = 1; i <= pdf.numPages; i++) {
-                const page = await pdf.getPage(i);
-                const viewport = page.getViewport({ scale: 1.5 });
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
 
-                const canvas = document.createElement("canvas");
-                const ctx = canvas.getContext("2d");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
 
-                canvas.width = viewport.width;
-                canvas.height = viewport.height;
+        await page.render({ canvasContext: ctx, viewport }).promise;
 
-                await page.render({ canvasContext: ctx, viewport }).promise;
-
-                images.push(canvas.toDataURL());
-            }
-        } else {
-            images.push(URL.createObjectURL(file));
-        }
+        images.push(canvas.toDataURL());
     }
 
     renderPages(images);
 }
 
-/* Thumbs highlight */
-function updateThumb(index) {
-    document.querySelectorAll(".thumb").forEach((t,i)=>{
-        t.classList.toggle("active", i === index);
-    });
+/* Page Number */
+function updatePageNumber(index) {
+    document.getElementById("pageNumber").innerText =
+        (index + 1) + " / " + totalPages;
 }
 
-/* Dark/Light */
-function toggleMode() {
-    document.body.classList.toggle("light");
+/* Flip Sound */
+function playSound() {
+    const s = document.getElementById("flipSound");
+    s.currentTime = 0;
+    s.play();
 }
+
+/* =========================
+   FIX: Instant Swipe Flip
+========================= */
+let startX = 0;
+
+document.addEventListener("touchstart", e => {
+    if (e.touches.length === 1) {
+        startX = e.touches[0].clientX;
+    }
+});
+
+document.addEventListener("touchmove", e => {
+    if (!pageFlip) return;
+
+    let currentX = e.touches[0].clientX;
+    let diff = startX - currentX;
+
+    if (diff > 25) {
+        pageFlip.flipNext();
+        startX = currentX;
+    }
+
+    if (diff < -25) {
+        pageFlip.flipPrev();
+        startX = currentX;
+    }
+});
+
+/* =========================
+   Pinch Zoom
+========================= */
+let initialDistance = 0;
+
+document.addEventListener("touchmove", e => {
+    if (e.touches.length === 2) {
+        let dx = e.touches[0].clientX - e.touches[1].clientX;
+        let dy = e.touches[0].clientY - e.touches[1].clientY;
+
+        let distance = Math.sqrt(dx*dx + dy*dy);
+
+        if (!initialDistance) initialDistance = distance;
+
+        let zoom = distance / initialDistance;
+
+        document.getElementById("book").style.transform =
+            `scale(${zoom})`;
+    }
+});
+
+document.addEventListener("touchend", () => {
+    initialDistance = 0;
+});
+
+/* Start */
+loadPDF();
 </script>
 
 </body>
