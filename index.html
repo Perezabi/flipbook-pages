@@ -2,55 +2,45 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Pro Flip Book | Perez</title>
+<title>Magazine Flipbook</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/page-flip/dist/js/page-flip.browser.min.js"></script>
 
 <style>
 body {
-    background: linear-gradient(135deg, #1a1a1a, #000);
+    margin: 0;
+    background: #0b0b0b;
+    font-family: -apple-system, sans-serif;
     color: white;
-    text-align: center;
-    overflow-x: hidden;
 }
 
-/* Book container */
-.book {
-    width: 600px;
-    height: 400px;
-    margin: 30px auto;
-    perspective: 2000px;
-    position: relative;
+/* Header */
+.header {
+    text-align: center;
+    padding: 10px;
+}
+
+/* Upload */
+.upload {
+    display: block;
+    margin: 10px auto;
+}
+
+/* Book */
+#book {
+    width: 95%;
+    max-width: 900px;
+    height: 600px;
+    margin: auto;
 }
 
 /* Page */
 .page {
-    width: 50%;
-    height: 100%;
-    position: absolute;
-    top: 0;
     background: white;
-    overflow: hidden;
-    transform-origin: left;
-    transition: transform 1s ease, box-shadow 1s;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.5);
-}
-
-/* Left & Right pages */
-.left {
-    left: 0;
-    border-right: 1px solid #ccc;
-}
-
-.right {
-    right: 0;
-    transform-origin: left;
-}
-
-/* Flip animation */
-.page.flipped {
-    transform: rotateY(-180deg);
-    box-shadow: -5px 5px 20px rgba(0,0,0,0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 .page img {
@@ -59,131 +49,126 @@ body {
     object-fit: cover;
 }
 
-/* Book shadow */
-.book::before {
-    content: "";
-    position: absolute;
+/* Thumbnails */
+.thumbs {
+    display: flex;
+    overflow-x: auto;
+    padding: 10px;
+    background: rgba(0,0,0,0.8);
+}
+
+.thumb {
+    width: 70px;
+    height: 90px;
+    margin-right: 10px;
+    border: 2px solid transparent;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.thumb img {
     width: 100%;
-    height: 20px;
-    bottom: -20px;
-    background: radial-gradient(ellipse, rgba(0,0,0,0.5), transparent);
+    height: 100%;
+    object-fit: cover;
+}
+
+.thumb.active {
+    border: 2px solid #00ffcc;
 }
 </style>
 </head>
 
 <body>
 
-<h2 class="mt-3">📖 Pro Flip Book</h2>
-
-<div class="container">
-    <input type="file" id="upload" multiple class="form-control mb-3">
-
-    <div class="book" id="book"></div>
-
-    <div class="mt-3">
-        <button class="btn btn-primary" onclick="prevPage()">⬅ Prev</button>
-        <button class="btn btn-success" onclick="nextPage()">Next ➡</button>
-        <button class="btn btn-warning" onclick="downloadPDF()">⬇ Save PDF</button>
-    </div>
+<div class="header">
+    <h2>📖 My Magazine</h2>
+    <input type="file" id="upload" class="upload" multiple>
 </div>
 
-<!-- Flip sound -->
+<div id="book"></div>
+
+<div class="thumbs" id="thumbs"></div>
+
 <audio id="flipSound" src="https://www.soundjay.com/page-turn/page-flip-01.mp3"></audio>
 
-<!-- jsPDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
 <script>
-let pages = [];
-let currentPage = 0;
-let imagesData = [];
+let pageFlip;
+let images = [];
 
 const flipSound = document.getElementById("flipSound");
 
-// Upload images
-document.getElementById("upload").addEventListener("change", function(e) {
+/* Upload */
+document.getElementById("upload").addEventListener("change", e => {
     const files = e.target.files;
     const book = document.getElementById("book");
+    const thumbs = document.getElementById("thumbs");
 
     book.innerHTML = "";
-    pages = [];
-    imagesData = [];
-    currentPage = 0;
+    thumbs.innerHTML = "";
+    images = [];
 
-    Array.from(files).forEach((file, index) => {
-        const reader = new FileReader();
+    let pagesHTML = "";
 
-        reader.onload = function(event) {
-            imagesData.push(event.target.result);
+    Array.from(files).forEach((file, i) => {
+        const url = URL.createObjectURL(file);
+        images.push(url);
 
-            const page = document.createElement("div");
-            page.className = "page " + (index % 2 === 0 ? "left" : "right");
-            page.style.zIndex = files.length - index;
+        pagesHTML += `
+            <div class="page">
+                <img src="${url}">
+            </div>
+        `;
 
-            const img = document.createElement("img");
-            img.src = event.target.result;
+        // thumbnails
+        const thumb = document.createElement("div");
+        thumb.className = "thumb";
+        thumb.innerHTML = `<img src="${url}">`;
 
-            page.appendChild(img);
-            book.appendChild(page);
-            pages.push(page);
+        thumb.onclick = () => {
+            pageFlip.flip(i);
         };
 
-        reader.readAsDataURL(file);
+        thumbs.appendChild(thumb);
     });
-});
 
-// Next
-function nextPage() {
-    if (currentPage < pages.length) {
-        pages[currentPage].classList.add("flipped");
+    book.innerHTML = pagesHTML;
+
+    pageFlip = new St.PageFlip(book, {
+        width: 450,
+        height: 600,
+        size: "stretch",
+        showCover: true,
+        mobileScrollSupport: false,
+        useMouseEvents: true,
+        maxShadowOpacity: 0.5
+    });
+
+    pageFlip.loadFromHTML(document.querySelectorAll(".page"));
+
+    /* Events */
+    pageFlip.on("flip", e => {
+        flipSound.currentTime = 0;
         flipSound.play();
-        currentPage++;
-    }
-}
+        updateActive(e.data);
+    });
 
-// Prev
-function prevPage() {
-    if (currentPage > 0) {
-        currentPage--;
-        pages[currentPage].classList.remove("flipped");
-        flipSound.play();
-    }
-}
-
-/* =========================
-   TOUCH SWIPE (Mobile)
-========================= */
-let startX = 0;
-
-document.addEventListener("touchstart", e => {
-    startX = e.touches[0].clientX;
+    updateActive(0);
 });
 
-document.addEventListener("touchend", e => {
-    let endX = e.changedTouches[0].clientX;
-
-    if (startX - endX > 50) {
-        nextPage(); // swipe left
-    } else if (endX - startX > 50) {
-        prevPage(); // swipe right
-    }
-});
-
-/* =========================
-   DOWNLOAD PDF
-========================= */
-async function downloadPDF() {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-
-    for (let i = 0; i < imagesData.length; i++) {
-        if (i !== 0) pdf.addPage();
-
-        pdf.addImage(imagesData[i], 'JPEG', 10, 10, 180, 250);
-    }
-
-    pdf.save("flipbook.pdf");
+/* Highlight active thumb */
+function updateActive(index) {
+    document.querySelectorAll(".thumb").forEach((t, i) => {
+        t.classList.toggle("active", i === index);
+    });
 }
+
+/* Keyboard navigation */
+document.addEventListener("keydown", e => {
+    if (!pageFlip) return;
+
+    if (e.key === "ArrowRight") pageFlip.flipNext();
+    if (e.key === "ArrowLeft") pageFlip.flipPrev();
+});
 </script>
 
 </body>
